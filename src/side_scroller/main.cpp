@@ -15,10 +15,11 @@ class SimpleMario {
 	bool isOnGround = true;
 
 	static constexpr float playerWidth = 0.08f;
-	static constexpr float playerHeight = 0.08f;
-	static constexpr float moveSpeed = 0.5f; // Units per second
-	static constexpr float jumpForce = 0.8f; // Initial jump velocity
-	static constexpr float gravity = -2.0f;	 // Gravity acceleration
+	static constexpr float playerHeight = 0.16f;
+	static constexpr float moveSpeed = 1.0f;		 // Units per second
+	static constexpr float jumpForce = 2.0f;		 // Initial jump velocity (increased)
+	static constexpr float gravity = -8.0f;			 // Gravity acceleration (increased for snappier feel)
+	static constexpr float groundTolerance = 0.001f; // Small tolerance for ground detection
 
 	// Ground position (normalized coordinates: -1.0 to 1.0)
 	static constexpr float groundY = -0.8f;
@@ -103,7 +104,7 @@ class SimpleMario {
 	}
 
 	void updatePhysics(float deltaTime) {
-		// Apply gravity
+		// Apply gravity (always)
 		velocityY += gravity * deltaTime;
 		playerY += velocityY * deltaTime;
 
@@ -111,13 +112,25 @@ class SimpleMario {
 		float playerBottom = playerY - playerHeight / 2.0f;
 		float groundTop = groundY + groundThickness / 2.0f;
 
+		// Check if player is on or penetrating ground
 		if (playerBottom <= groundTop) {
+			// Snap out of ground
 			playerY = groundTop + playerHeight / 2.0f;
-			velocityY = 0.0f;
-			isOnGround = true;
-		} else {
+
+			// If we were falling (negative velocity), we've landed
+			bool isFalling = velocityY < 0.0f;
+			if (isFalling) {
+				velocityY = 0.0f;
+				isOnGround = true;
+			}
+			// If velocityY >= 0, we just started jumping from ground level
+			// Don't change isOnGround - let the jump handler set it to false
+		} else if (playerBottom > groundTop + groundTolerance) {
+			// We're clearly in the air (above tolerance zone)
 			isOnGround = false;
 		}
+		// If we're in the tolerance zone but above ground, maintain current state
+		// This prevents rapid toggling between ground/air states
 
 		// Smooth horizontal movement based on held keys
 		if (keysPressed.count(GLFW_KEY_LEFT)) {
@@ -143,10 +156,11 @@ class SimpleMario {
 			game->keysPressed.insert(key);
 
 			if (key == GLFW_KEY_UP || key == GLFW_KEY_SPACE) {
+				// Allow jumping if on ground or very close to ground
 				if (game->isOnGround) {
 					game->velocityY = jumpForce;
 					game->isOnGround = false;
-					fmt::println("Jump!");
+					fmt::println("Jump! Velocity: {:.2f}", game->velocityY);
 				}
 			}
 		} else if (action == GLFW_RELEASE) {
