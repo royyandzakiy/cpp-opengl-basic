@@ -1,0 +1,185 @@
+{
+	"version": 4,
+	"cmakeMinimumRequired": {
+		"major": 3,
+		"minor": 28,
+		"patch": 0
+	},
+	"configurePresets": [
+		{
+			"name": "base",
+			"hidden": true,
+			"generator": "Ninja",
+			"binaryDir": "${sourceDir}/build/${presetName}",
+			"cacheVariables": {
+				"CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+			}
+		},
+		{
+			"name": "clang-cl-base",
+			"hidden": true,
+			"inherits": "base",
+			"condition": {
+				"type": "equals",
+				"lhs": "${hostSystemName}",
+				"rhs": "Windows"
+			},
+			"cacheVariables": {
+				"CMAKE_C_COMPILER": "clang-cl",
+				"CMAKE_CXX_COMPILER": "clang-cl",
+				"VCPKG_TARGET_TRIPLET": "x64-windows",
+				"CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/bin/clang-cl"
+			}
+		},
+		{
+			"name": "clang-linux-base",
+			"hidden": true,
+			"inherits": "base",
+			"condition": {
+				"type": "equals",
+				"lhs": "${hostSystemName}",
+				"rhs": "Linux"
+			},
+			"cacheVariables": {
+				"CMAKE_C_COMPILER": "clang",
+				"CMAKE_CXX_COMPILER": "clang++",
+				"VCPKG_TARGET_TRIPLET": "x64-linux",
+				"CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/bin/clang"
+			}
+		},
+		{
+			"name": "gcc-linux-base",
+			"hidden": true,
+			"inherits": "base",
+			"condition": {
+				"type": "equals",
+				"lhs": "${hostSystemName}",
+				"rhs": "Linux"
+			},
+			"cacheVariables": {
+				"CMAKE_C_COMPILER": "gcc",
+				"CMAKE_CXX_COMPILER": "g++",
+				"VCPKG_TARGET_TRIPLET": "x64-linux",
+				"CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/bin/gcc"
+			}
+		},
+		{
+			"name": "build-debug",
+			"hidden": true,
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug"
+			}
+		},
+		{
+			"name": "build-release",
+			"hidden": true,
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release"
+			}
+		},
+		{
+			"name": "clang-cl-debug",
+			"displayName": "Clang-CL Debug",
+			"inherits": [
+				"clang-cl-base",
+				"build-debug"
+			]
+		},
+		{
+			"name": "clang-cl-release",
+			"displayName": "Clang-CL Release",
+			"inherits": [
+				"clang-cl-base",
+				"build-release"
+			]
+		},
+		{
+			"name": "clang-linux-debug",
+			"displayName": "Clang Debug",
+			"inherits": [
+				"clang-linux-base",
+				"build-debug"
+			]
+		},
+		{
+			"name": "clang-linux-release",
+			"displayName": "Clang Release",
+			"inherits": [
+				"clang-linux-base",
+				"build-release"
+			]
+		},
+		{
+			"name": "gcc-linux-debug",
+			"displayName": "GCC Debug",
+			"inherits": [
+				"gcc-linux-base",
+				"build-debug"
+			]
+		},
+		{
+			"name": "gcc-linux-release",
+			"displayName": "GCC Release",
+			"inherits": [
+				"gcc-linux-base",
+				"build-release"
+			]
+		}
+	],
+	"buildPresets": [
+		{
+			"name": "clang-cl-debug",
+			"configurePreset": "clang-cl-debug",
+			"configuration": "Debug"
+		},
+		{
+			"name": "clang-cl-release",
+			"configurePreset": "clang-cl-release",
+			"configuration": "Release"
+		},
+		{
+			"name": "clang-linux-debug",
+			"configurePreset": "clang-linux-debug",
+			"configuration": "Debug"
+		},
+		{
+			"name": "clang-linux-release",
+			"configurePreset": "clang-linux-release",
+			"configuration": "Release"
+		},
+		{
+			"name": "gcc-linux-debug",
+			"configurePreset": "gcc-linux-debug",
+			"configuration": "Debug"
+		},
+		{
+			"name": "gcc-linux-release",
+			"configurePreset": "gcc-linux-release",
+			"configuration": "Release"
+		}
+	],
+	"testPresets": [
+		{
+			"name": "base-test",
+			"hidden": true,
+			"output": {
+				"outputOnFailure": true
+			}
+		},
+		{
+			"name": "clang-cl-debug",
+			"inherits": "base-test",
+			"configurePreset": "clang-cl-debug"
+		},
+		{
+			"name": "clang-linux-debug",
+			"inherits": "base-test",
+			"configurePreset": "clang-linux-debug"
+		},
+		{
+			"name": "gcc-linux-debug",
+			"inherits": "base-test",
+			"configurePreset": "gcc-linux-debug"
+		}
+	]
+}

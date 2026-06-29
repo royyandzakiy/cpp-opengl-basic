@@ -1,0 +1,10 @@
+# local_options.cmake.example — copy to `local_options.cmake` (gitignored) and uncomment.
+# Included BEFORE project(), so these win over the option() defaults in CMakeLists.txt.
+
+# vcpkg location, only if it's not on PATH / a standard spot (C:/vcpkg, ~/vcpkg, /opt/vcpkg, ...):
+# set(VCPKG_ROOT_PATH "C:/vcpkg")     # Windows
+# set(VCPKG_ROOT_PATH "/opt/vcpkg")   # Linux / WSL2
+
+# Build tests / examples without passing -D every time:
+# set(BUILD_TESTING ON)
+# set(BUILD_EXAMPLES ON)
