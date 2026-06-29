@@ -1,5 +1,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <array>
+#include <cstdint>
 #include <fmt/base.h>
 #include <iostream>
 
@@ -52,39 +54,39 @@ int main() {
 	}
 
 	// Triangle vertices
-	float vertices[] = {
+	std::array<float, 9> vertices = {
 		-0.5f, -0.5f, 0.0f, // bottom left
 		0.5f,  -0.5f, 0.0f, // bottom right
 		0.0f,  0.5f,  0.0f	// top
 	};
 
 	// Create VAO
-	unsigned int VAO;
+	std::uint32_t VAO{};
 	glGenVertexArrays(1, &VAO);
 	glBindVertexArray(VAO);
 
 	// Create VBO
-	unsigned int VBO;
+	std::uint32_t VBO{};
 	glGenBuffers(1, &VBO);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices.data(), GL_STATIC_DRAW);
 
 	// Link vertex attributes
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
 	glEnableVertexAttribArray(0);
 
 	// Create vertex shader
-	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
+	std::uint32_t vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
 	glCompileShader(vertexShader);
 
 	// Create fragment shader
-	unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	std::uint32_t fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(fragmentShader, 1, &fragmentShaderSource, nullptr);
 	glCompileShader(fragmentShader);
 
 	// Create shader program
-	unsigned int shaderProgram = glCreateProgram();
+	std::uint32_t shaderProgram = glCreateProgram();
 	glAttachShader(shaderProgram, vertexShader);
 	glAttachShader(shaderProgram, fragmentShader);
 	glLinkProgram(shaderProgram);

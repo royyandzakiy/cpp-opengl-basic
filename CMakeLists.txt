@@ -61,6 +61,7 @@ include(project_dependencies.cmake)
 #=========================
 add_subdirectory(src/basic_triangle)
 add_subdirectory(src/keyboard_control)
+add_subdirectory(src/side_scroller)
 
 #=========================
 # Tests & Coverage

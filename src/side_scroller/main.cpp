@@ -5,35 +5,48 @@
 #include <cstdio>
 #include <fmt/base.h>
 
-class MovingBox {
+class SimpleMario {
   private:
-	// Box state
-	float boxX = 0.0f;
-	float boxY = 0.0f;
-	static constexpr float boxSize = 0.1f;
+	// Player state
+	float playerX = 0.0f;
+	float playerY = 0.0f;
+	float velocityY = 0.0f;
+	bool isOnGround = true;
+
+	static constexpr float playerWidth = 0.08f;
+	static constexpr float playerHeight = 0.08f;
 	static constexpr float moveSpeed = 0.01f;
+	static constexpr float jumpForce = 0.03f;
+	static constexpr float gravity = -0.0015f;
+
+	// Ground position (normalized coordinates: -1.0 to 1.0)
+	static constexpr float groundY = -0.8f;
+	static constexpr float groundThickness = 0.02f;
 
 	// OpenGL objects
 	GLuint shaderProgram{};
-	GLuint VAO{};
-	GLuint VBO{};
+	GLuint playerVAO{}, playerVBO{};
+	GLuint groundVAO{}, groundVBO{};
 	GLFWwindow *window = nullptr;
 
-	// Shader sources
 	static constexpr const char *vertexShaderSource = R"(
 		#version 330 core
 		layout (location = 0) in vec2 aPos;
 		uniform vec2 uOffset;
+		uniform vec3 uColor;
+		out vec3 fragColor;
 		void main() {
 			gl_Position = vec4(aPos.x + uOffset.x, aPos.y + uOffset.y, 0.0, 1.0);
+			fragColor = uColor;
 		}
 	)";
 
 	static constexpr const char *fragmentShaderSource = R"(
 		#version 330 core
+		in vec3 fragColor;
 		out vec4 FragColor;
 		void main() {
-			FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+			FragColor = vec4(fragColor, 1.0);
 		}
 	)";
 
@@ -55,8 +68,11 @@ class MovingBox {
 		glDeleteShader(fragmentShader);
 	}
 
-	void setupBox() {
-		std::array<float, 8> vertices = {-boxSize, -boxSize, boxSize, -boxSize, boxSize, boxSize, -boxSize, boxSize};
+	void setupRectangle(GLuint &VAO, GLuint &VBO, float width, float height) {
+		float halfW = width / 2.0f;
+		float halfH = height / 2.0f;
+
+		std::array<float, 8> vertices = {-halfW, -halfH, halfW, -halfH, halfW, halfH, -halfW, halfH};
 
 		std::array<std::uint32_t, 6> indices = {0, 1, 2, 0, 2, 3};
 
@@ -81,28 +97,44 @@ class MovingBox {
 		glBindVertexArray(0);
 	}
 
+	void updatePhysics() {
+		// Apply gravity
+		velocityY += gravity;
+		playerY += velocityY;
+
+		// Ground collision
+		float playerBottom = playerY - playerHeight / 2.0f;
+		float groundTop = groundY + groundThickness / 2.0f;
+
+		if (playerBottom <= groundTop) {
+			playerY = groundTop + playerHeight / 2.0f;
+			velocityY = 0.0f;
+			isOnGround = true;
+		} else {
+			isOnGround = false;
+		}
+	}
+
 	// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 	static void keyCallback(GLFWwindow *window, int key, [[maybe_unused]] int scancode, int action,
 							[[maybe_unused]] int mods) {
-		auto *mybox = static_cast<MovingBox *>(glfwGetWindowUserPointer(window));
+		auto *game = static_cast<SimpleMario *>(glfwGetWindowUserPointer(window));
 
 		if (action == GLFW_PRESS || action == GLFW_REPEAT) {
 			switch (key) {
 			case GLFW_KEY_UP:
-				mybox->boxY += moveSpeed;
-				fmt::println("Up pressed - Box position: ({:.3f}, {:.3f})", mybox->boxX, mybox->boxY);
-				break;
-			case GLFW_KEY_DOWN:
-				mybox->boxY -= moveSpeed;
-				fmt::println("Down pressed - Box position: ({:.3f}, {:.3f})", mybox->boxX, mybox->boxY);
+			case GLFW_KEY_SPACE:
+				if (game->isOnGround) {
+					game->velocityY = jumpForce;
+					game->isOnGround = false;
+					fmt::println("Jump!");
+				}
 				break;
 			case GLFW_KEY_LEFT:
-				mybox->boxX -= moveSpeed;
-				fmt::println("Left pressed - Box position: ({:.3f}, {:.3f})", mybox->boxX, mybox->boxY);
+				game->playerX -= moveSpeed;
 				break;
 			case GLFW_KEY_RIGHT:
-				mybox->boxX += moveSpeed;
-				fmt::println("Right pressed - Box position: ({:.3f}, {:.3f})", mybox->boxX, mybox->boxY);
+				game->playerX += moveSpeed;
 				break;
 			case GLFW_KEY_ESCAPE:
 				glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -113,9 +145,16 @@ class MovingBox {
 		}
 	}
 
+	void drawRectangle(float x, float y, float r, float g, float b, GLuint VAO) {
+		glUniform2f(glGetUniformLocation(shaderProgram, "uOffset"), x, y);
+		glUniform3f(glGetUniformLocation(shaderProgram, "uColor"), r, g, b);
+		glBindVertexArray(VAO);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+	}
+
   public:
 	int run() {
-		fmt::println("Hello OpenGL - Arrow Keys to Move Box!");
+		fmt::println("Simple Mario - Arrow Keys to Move, Space/Up to Jump!");
 
 		if (!glfwInit()) {
 			fmt::print(stderr, "Failed to initialize GLFW\n");
@@ -126,7 +165,7 @@ class MovingBox {
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-		window = glfwCreateWindow(800, 600, "Moving Box", nullptr, nullptr);
+		window = glfwCreateWindow(800, 600, "Simple Mario", nullptr, nullptr);
 		if (!window) {
 			fmt::print(stderr, "Failed to create window\n");
 			glfwTerminate();
@@ -143,19 +182,29 @@ class MovingBox {
 		}
 
 		fmt::println("OpenGL version: {}", reinterpret_cast<const char *>(glGetString(GL_VERSION)));
-		fmt::println("Use arrow keys to move the red box. Press ESC to exit.");
+		fmt::println("Use arrow keys to move, Space/Up to jump. Press ESC to exit.");
 
 		setupShaders();
-		setupBox();
+		setupRectangle(playerVAO, playerVBO, playerWidth, playerHeight);
+		setupRectangle(groundVAO, groundVBO, 2.0f, groundThickness); // Full width ground
+
+		// Start player on the ground
+		playerX = 0.0f;
+		playerY = groundY + groundThickness / 2.0f + playerHeight / 2.0f;
 
 		while (!glfwWindowShouldClose(window)) {
-			glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+			updatePhysics();
+
+			glClearColor(0.4f, 0.6f, 1.0f, 1.0f); // Sky blue background
 			glClear(GL_COLOR_BUFFER_BIT);
 
 			glUseProgram(shaderProgram);
-			glUniform2f(glGetUniformLocation(shaderProgram, "uOffset"), boxX, boxY);
-			glBindVertexArray(VAO);
-			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+
+			// Draw ground (white)
+			drawRectangle(0.0f, groundY, 1.0f, 1.0f, 1.0f, groundVAO);
+
+			// Draw player (red)
+			drawRectangle(playerX, playerY, 1.0f, 0.0f, 0.0f, playerVAO);
 
 			glfwSwapBuffers(window);
 			glfwPollEvents();
@@ -167,6 +216,6 @@ class MovingBox {
 };
 
 auto main() -> int {
-	MovingBox app;
-	return app.run();
+	SimpleMario game;
+	return game.run();
 }
