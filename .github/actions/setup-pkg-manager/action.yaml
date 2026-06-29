@@ -1,0 +1,45 @@
+name: Setup Package Manager
+inputs:
+  os:
+    required: true
+runs:
+  using: composite
+  steps:
+    # ── vcpkg (all OSes) ───────────────────────────────────
+    - name: Clone vcpkg (non-Linux)
+      if: inputs.os != 'linux'
+      shell: bash
+      run: |
+        if [ ! -d "$HOME/vcpkg" ]; then
+          git clone https://github.com/Microsoft/vcpkg.git "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+        fi
+        echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+        echo "$HOME/vcpkg" >> "$GITHUB_PATH"
+
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.home }}/vcpkg
+          !${{ runner.home }}/vcpkg/.git
+        key: vcpkg-${{ inputs.os }}-${{ hashFiles('vcpkg.json') }}
+        restore-keys: vcpkg-${{ inputs.os }}-
+
+    # ── Conan (all OSes) ────────────────────────────────────
+    - name: Install Conan (non-Linux)
+      if: inputs.os != 'linux'
+      shell: bash
+      run: |
+        if ! command -v conan >/dev/null 2>&1; then
+          pipx install conan
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        fi
+        conan profile detect --force
+
+    - name: Cache Conan
+      uses: actions/cache@v4
+      with:
+        path: ~/.conan2
+        key: conan-${{ inputs.os }}-${{ hashFiles('conanfile.txt') }}
+        restore-keys: conan-${{ inputs.os }}-

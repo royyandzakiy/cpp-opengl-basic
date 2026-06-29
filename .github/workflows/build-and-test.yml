@@ -1,0 +1,239 @@
+# .github/workflows/build-and-test.yaml
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pkg-manager:
+        description: 'Package manager'
+        required: false
+        default: 'conan'
+        type: choice
+        options:
+          - vcpkg
+          - conan
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [clang-linux-debug, clang-linux-release, gcc-linux-debug, gcc-linux-release, clang-linux-asan, clang-linux-tsan, clang-linux-full]
+    env:
+      PKG_MANAGER: ${{ github.event.inputs.pkg-manager || 'vcpkg' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install toolchain (pinned) + both package managers
+        run: bash scripts/setup-ubuntu.sh --with-vcpkg
+
+      - uses: ./.github/actions/setup-pkg-manager
+        with:
+          os: linux
+
+      - uses: ./.github/actions/cmake-build-test
+        with:
+          preset: ${{ matrix.preset }}
+          cmake-args: -D PKG_MANAGER=${{ env.PKG_MANAGER }} -D BUILD_TESTING=ON
+          retry: true
+
+      - name: Coverage report
+        if: matrix.preset == 'clang-linux-debug'
+        run: cmake --build --preset ${{ matrix.preset }} --target coverage
+
+      - name: Coverage job summary
+        if: matrix.preset == 'clang-linux-debug'
+        run: |
+          {
+            echo "## Coverage — ${{ matrix.preset }} (Clang)"
+            echo ""
+            python3 scripts/cov-to-md.py "build/${{ matrix.preset }}/coverage.lcov"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stage badges (clang)
+        if: matrix.preset == 'clang-linux-debug'
+        run: |
+          mkdir -p badges-out
+          python3 scripts/cov-to-md.py --shields "build/${{ matrix.preset }}/coverage.lcov" > badges-out/coverage.json
+          python3 scripts/make-badge.py --from-toolchain "build/${{ matrix.preset }}/toolchain.txt" > badges-out/clang.json
+          . /etc/os-release
+          python3 scripts/make-badge.py --label "tested on" --message "$NAME $VERSION_ID" --color E95420 --logo ubuntu > badges-out/os-linux.json
+
+      - name: Stage badges (gcc)
+        if: matrix.preset == 'gcc-linux-debug'
+        run: |
+          mkdir -p badges-out
+          python3 scripts/make-badge.py --from-toolchain "build/${{ matrix.preset }}/toolchain.txt" > badges-out/gcc.json
+
+      - name: Upload staged badges
+        if: matrix.preset == 'clang-linux-debug' || matrix.preset == 'gcc-linux-debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: badges-${{ matrix.preset }}
+          path: badges-out
+          if-no-files-found: error
+
+      - name: Upload coverage HTML
+        if: matrix.preset == 'clang-linux-debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.preset }}
+          path: build/${{ matrix.preset }}/coverage-html
+          if-no-files-found: error
+
+  windows:
+    name: ${{ matrix.preset }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [msvc-debug, msvc-release, msvc-asan, clang-cl-debug, clang-cl-release, mingw-debug, mingw-release] # todo: clang-cl-asan still fails to build
+    env:
+      PKG_MANAGER: ${{ github.event.inputs.pkg-manager || 'vcpkg' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - uses: ./.github/actions/setup-pkg-manager
+        with:
+          os: windows
+
+      - uses: ./.github/actions/cmake-build-test
+        with:
+          preset: ${{ matrix.preset }}
+          cmake-args: -D BUILD_TESTING=ON -D PKG_MANAGER=${{ env.PKG_MANAGER }}
+
+      - name: Stage badges (MSVC)
+        if: contains(matrix.preset, 'msvc-debug')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path badges-out
+          python scripts/make-badge.py --label "MSVC" --from-toolchain "build/${{ matrix.preset }}/toolchain.txt" > badges-out/msvc.json
+          $os = (Get-CimInstance Win32_OperatingSystem).Caption -replace "Microsoft ", ""
+          python scripts/make-badge.py --label "tested on" --message $os --color 0078D6 --logo windows > badges-out/os-windows.json
+
+      - name: Stage badges (Clang-CL)
+        if: contains(matrix.preset, 'clang-cl-debug')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path badges-out
+          python scripts/make-badge.py --label "Clang-CL" --from-toolchain "build/${{ matrix.preset }}/toolchain.txt" > badges-out/clang-cl.json
+
+      - name: Stage badges (MinGW)
+        if: contains(matrix.preset, 'mingw-debug')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path badges-out
+          python scripts/make-badge.py --label "MinGW" --from-toolchain "build/${{ matrix.preset }}/toolchain.txt" > badges-out/mingw.json
+
+      - name: Upload Windows badges
+        if: contains(matrix.preset, 'debug')
+        uses: actions/upload-artifact@v4
+        with:
+          name: badges-${{ matrix.preset }}
+          path: badges-out
+          if-no-files-found: error
+
+      - name: Upload test results (optional)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.preset }}
+          path: build/${{ matrix.preset }}/Testing/Temporary
+          if-no-files-found: ignore
+
+  macos:
+    name: ${{ matrix.preset }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [appleclang-debug, appleclang-release]
+    env:
+      PKG_MANAGER: ${{ github.event.inputs.pkg-manager || 'vcpkg' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        run: |
+          brew install cmake ninja
+          which ninja
+          ninja --version
+
+      - uses: ./.github/actions/setup-pkg-manager
+        with:
+          os: macos
+
+      - uses: ./.github/actions/cmake-build-test
+        with:
+          preset: ${{ matrix.preset }}
+          cmake-args: -D PKG_MANAGER=${{ env.PKG_MANAGER }} -D BUILD_TESTING=ON
+
+      - name: Stage badges (AppleClang)
+        if: matrix.preset == 'appleclang-debug'
+        run: |
+          mkdir -p badges-out
+          python3 scripts/make-badge.py --from-toolchain "build/${{ matrix.preset }}/toolchain.txt" > badges-out/appleclang.json
+
+      - name: Stage badges (OS)
+        if: matrix.preset == 'appleclang-debug'
+        run: |
+          mkdir -p badges-out
+          python3 scripts/make-badge.py --label "tested on" --message "macOS $(sw_vers -productVersion)" --color 999999 --logo apple > badges-out/os-macos.json
+
+      - name: Upload Apple badges
+        if: matrix.preset == 'appleclang-debug'
+        uses: actions/upload-artifact@v4
+        with:
+          name: badges-${{ matrix.preset }}
+          path: badges-out
+          if-no-files-found: error
+
+  publish-badges:
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: badges-*
+          path: badges-in
+          merge-multiple: true
+      - run: |
+          work="$(mktemp -d)"
+          if git clone --depth=1 --branch badges "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$work" 2>/dev/null; then
+            cd "$work"
+          else
+            cd "$work"
+            git init -q && git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+            git checkout -q --orphan badges && git rm -rqf . 2>/dev/null || true
+          fi
+          cp "$GITHUB_WORKSPACE"/badges-in/*.json .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ./*.json
+          git commit -q -m "ci: update badges [skip ci]" || { echo "badges unchanged"; exit 0; }
+          git push -q origin badges
