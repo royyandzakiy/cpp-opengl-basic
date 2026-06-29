@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fmt/base.h>
+#include <unordered_set>
 
 class SimpleMario {
   private:
@@ -15,13 +16,17 @@ class SimpleMario {
 
 	static constexpr float playerWidth = 0.08f;
 	static constexpr float playerHeight = 0.08f;
-	static constexpr float moveSpeed = 0.01f;
-	static constexpr float jumpForce = 0.03f;
-	static constexpr float gravity = -0.0015f;
+	static constexpr float moveSpeed = 0.5f; // Units per second
+	static constexpr float jumpForce = 0.8f; // Initial jump velocity
+	static constexpr float gravity = -2.0f;	 // Gravity acceleration
 
 	// Ground position (normalized coordinates: -1.0 to 1.0)
 	static constexpr float groundY = -0.8f;
 	static constexpr float groundThickness = 0.02f;
+
+	// Input tracking
+	std::unordered_set<int> keysPressed;
+	double lastFrameTime = 0.0;
 
 	// OpenGL objects
 	GLuint shaderProgram{};
@@ -97,10 +102,10 @@ class SimpleMario {
 		glBindVertexArray(0);
 	}
 
-	void updatePhysics() {
+	void updatePhysics(float deltaTime) {
 		// Apply gravity
-		velocityY += gravity;
-		playerY += velocityY;
+		velocityY += gravity * deltaTime;
+		playerY += velocityY * deltaTime;
 
 		// Ground collision
 		float playerBottom = playerY - playerHeight / 2.0f;
@@ -113,6 +118,20 @@ class SimpleMario {
 		} else {
 			isOnGround = false;
 		}
+
+		// Smooth horizontal movement based on held keys
+		if (keysPressed.count(GLFW_KEY_LEFT)) {
+			playerX -= moveSpeed * deltaTime;
+		}
+		if (keysPressed.count(GLFW_KEY_RIGHT)) {
+			playerX += moveSpeed * deltaTime;
+		}
+
+		// Keep player in bounds
+		if (playerX < -1.0f + playerWidth / 2.0f)
+			playerX = -1.0f + playerWidth / 2.0f;
+		if (playerX > 1.0f - playerWidth / 2.0f)
+			playerX = 1.0f - playerWidth / 2.0f;
 	}
 
 	// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
@@ -120,28 +139,22 @@ class SimpleMario {
 							[[maybe_unused]] int mods) {
 		auto *game = static_cast<SimpleMario *>(glfwGetWindowUserPointer(window));
 
-		if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-			switch (key) {
-			case GLFW_KEY_UP:
-			case GLFW_KEY_SPACE:
+		if (action == GLFW_PRESS) {
+			game->keysPressed.insert(key);
+
+			if (key == GLFW_KEY_UP || key == GLFW_KEY_SPACE) {
 				if (game->isOnGround) {
 					game->velocityY = jumpForce;
 					game->isOnGround = false;
 					fmt::println("Jump!");
 				}
-				break;
-			case GLFW_KEY_LEFT:
-				game->playerX -= moveSpeed;
-				break;
-			case GLFW_KEY_RIGHT:
-				game->playerX += moveSpeed;
-				break;
-			case GLFW_KEY_ESCAPE:
-				glfwSetWindowShouldClose(window, GLFW_TRUE);
-				break;
-			default:
-				break;
 			}
+		} else if (action == GLFW_RELEASE) {
+			game->keysPressed.erase(key);
+		}
+
+		if (action == GLFW_PRESS && key == GLFW_KEY_ESCAPE) {
+			glfwSetWindowShouldClose(window, GLFW_TRUE);
 		}
 	}
 
@@ -186,16 +199,27 @@ class SimpleMario {
 
 		setupShaders();
 		setupRectangle(playerVAO, playerVBO, playerWidth, playerHeight);
-		setupRectangle(groundVAO, groundVBO, 2.0f, groundThickness); // Full width ground
+		setupRectangle(groundVAO, groundVBO, 2.0f, groundThickness);
 
 		// Start player on the ground
 		playerX = 0.0f;
 		playerY = groundY + groundThickness / 2.0f + playerHeight / 2.0f;
 
-		while (!glfwWindowShouldClose(window)) {
-			updatePhysics();
+		lastFrameTime = glfwGetTime();
 
-			glClearColor(0.4f, 0.6f, 1.0f, 1.0f); // Sky blue background
+		while (!glfwWindowShouldClose(window)) {
+			// Calculate delta time for frame-rate independence
+			double currentTime = glfwGetTime();
+			auto deltaTime = static_cast<float>(currentTime - lastFrameTime);
+			lastFrameTime = currentTime;
+
+			// Cap delta time to avoid huge jumps if debugging
+			if (deltaTime > 0.1f)
+				deltaTime = 0.1f;
+
+			updatePhysics(deltaTime);
+
+			glClearColor(0.4f, 0.6f, 1.0f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 
 			glUseProgram(shaderProgram);
